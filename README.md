@@ -22,46 +22,45 @@ Client (OpenAI API)    Client (Anthropic API)
 ## Quick Start
 
 ```bash
-# Set your API key
 export OPENCODE_API_KEY="your-opencode-go-key"
-
-# Start the proxy
 make run
 ```
-
-Then send requests in either API format.
 
 ## Configuration
 
 ```yaml
 listen:
-  openai: ":8000"       # OpenAI API endpoint
-  anthropic: ":8001"    # Anthropic API endpoint
+  openai: ":8000"
+  anthropic: ":8001"
 
 providers:
   opencode:
     endpoint: https://opencode.ai/zen/go/v1
     api_key: ${OPENCODE_API_KEY}
+    models:
+      qwen3.7-plus:
+        api: anthropic
+      deepseek-v4-flash:
+        api: openai
 
 routes:
-  # OpenAI-compatible client → OpenAI upstream
-  gpt-5-mini:
-    provider: opencode
-    model: deepseek-v4-flash
-    api: openai
-
-  # Anthropic-compatible client → OpenAI upstream
-  claude-sonnet-4:
-    provider: opencode
-    model: deepseek-v4-flash
-    api: openai
-
-  # Any client → Anthropic upstream (e.g. qwen3.7-plus uses Anthropic Messages API)
   gpt-5:
     provider: opencode
     model: qwen3.7-plus
-    api: anthropic
+
+  gpt-5-mini:
+    provider: opencode
+    model: deepseek-v4-flash
 ```
+
+### How `api` is resolved
+
+1. If a route has `api` set, use that value
+2. Otherwise, look up `providers.<name>.models.<model>.api`
+3. Otherwise, default to `openai`
+
+This means routes don't need to specify `api` — it's defined once per model
+in the provider config.
 
 ### Route fields
 
@@ -69,32 +68,33 @@ routes:
 |-------|-------------|
 | `provider` | Provider name from `providers` section |
 | `model` | Actual model name sent to upstream |
+
+### Provider model fields
+
+| Field | Description |
+|-------|-------------|
 | `api` | Upstream API format: `openai` or `anthropic` |
 
-The `api` field determines how the provider formats the request to the upstream.
-- `openai`: Uses `Authorization: Bearer` header, sends to `/chat/completions`
-- `anthropic`: Uses `x-api-key` header with `anthropic-version: 2023-06-01`, sends to `/messages`
+- `openai`: `Authorization: Bearer`, `/v1/chat/completions`
+- `anthropic`: `x-api-key` + `anthropic-version: 2023-06-01`, `/v1/messages`
 
 ## Usage Examples
 
-### OpenAI format (port 8000)
-
+OpenAI format (port 8000):
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-5-mini","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-### Anthropic format (port 8001)
-
+Anthropic format (port 8001):
 ```bash
 curl http://localhost:8001/v1/messages \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4","messages":[{"role":"user","content":"hello"}],"max_tokens":100}'
 ```
 
-### Streaming (both formats)
-
+Streaming:
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -103,27 +103,21 @@ curl http://localhost:8000/v1/chat/completions \
 
 ## OpenCode Go API Notes
 
-OpenCode Go uses **two different API formats** depending on the model:
+OpenCode Go uses different API formats per model:
 
-| API Format | Auth Header | Endpoint | Models |
-|------------|------------|----------|--------|
-| OpenAI | `Authorization: Bearer` | `/v1/chat/completions` | deepseek-v4-flash, kimi-k2.6, glm-5.1, etc. |
-| Anthropic | `x-api-key` | `/v1/messages` | qwen3.7-plus, qwen3.7-max, minimax-m2.7 |
+| API Format | Auth Header | Endpoint |
+|------------|-------------|----------|
+| OpenAI | `Authorization: Bearer` | `/v1/chat/completions` |
+| Anthropic | `x-api-key` | `/v1/messages` |
 
-Set `api: anthropic` for models that require Anthropic Messages API.
-
-## Model Resolution
-
-Every incoming model name is resolved through the routes table. If a model is not
-configured, the proxy returns a 404 error. No model names are hardcoded in the
-application code.
+Models using Anthropic format: `qwen3.7-plus`, `qwen3.7-max`, `minimax-m2.7`
+Models using OpenAI format: `deepseek-v4-flash`, `kimi-k2.6`, `glm-5.1`
 
 ## Streaming
 
-- **OpenAI → OpenAI**: Raw SSE passthrough
-- **Anthropic → OpenAI**: OpenAI SSE format passthrough
-- **Anthropic → Anthropic**: OpenAI SSE → Anthropic SSE conversion
+- **OpenAI upstream**: Raw SSE passthrough
+- **Anthropic upstream**: Anthropic SSE → OpenAI SSE conversion → Handler
 
 ## Logging
 
-Structured JSON logs to stdout. API keys and message content are never logged.
+JSON structured logs to stdout. API keys and message content are never logged.

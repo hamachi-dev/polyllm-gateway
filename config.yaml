@@ -6,19 +6,21 @@ providers:
   opencode:
     endpoint: https://opencode.ai/zen/go/v1
     api_key: ${OPENCODE_API_KEY}
+    models:
+      qwen3.7-plus:
+        api: anthropic
+      deepseek-v4-flash:
+        api: openai
 
 routes:
   gpt-5:
     provider: opencode
     model: qwen3.7-plus
-    api: anthropic
 
   gpt-5-mini:
     provider: opencode
     model: deepseek-v4-flash
-    api: openai
 
   claude-sonnet-4:
     provider: opencode
     model: deepseek-v4-flash
-    api: openai

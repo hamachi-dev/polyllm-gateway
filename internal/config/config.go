@@ -8,20 +8,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type ModelConfig struct {
+	API string `yaml:"api"`
+}
+
 type ProviderConfig struct {
-	Endpoint string `yaml:"endpoint"`
-	APIKey   string `yaml:"api_key"`
+	Endpoint string                 `yaml:"endpoint"`
+	APIKey   string                 `yaml:"api_key"`
+	Models   map[string]ModelConfig `yaml:"models,omitempty"`
 }
 
 type RouteConfig struct {
 	Provider string `yaml:"provider"`
 	Model    string `yaml:"model"`
-	API      string `yaml:"api"`
+	API      string `yaml:"api,omitempty"`
 }
 
 type ListenConfig struct {
-	OpenAI     string `yaml:"openai"`
-	Anthropic  string `yaml:"anthropic"`
+	OpenAI    string `yaml:"openai"`
+	Anthropic string `yaml:"anthropic"`
 }
 
 type Config struct {
@@ -62,6 +67,23 @@ func expandEnvRecursive(v interface{}) {
 	}
 }
 
+func resolveRouteAPI(cfg *Config) {
+	for name, rc := range cfg.Routes {
+		if rc.API != "" {
+			continue
+		}
+		if pc, ok := cfg.Providers[rc.Provider]; ok && pc.Models != nil {
+			if mc, ok := pc.Models[rc.Model]; ok && mc.API != "" {
+				rc.API = mc.API
+				cfg.Routes[name] = rc
+				continue
+			}
+		}
+		rc.API = "openai"
+		cfg.Routes[name] = rc
+	}
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -84,6 +106,8 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(expanded, &cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+
+	resolveRouteAPI(&cfg)
 
 	return &cfg, nil
 }

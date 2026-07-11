@@ -19,17 +19,20 @@ providers:
   opencode:
     endpoint: https://api.example.com/v1
     api_key: test-key-123
+    models:
+      qwen3.7-plus:
+        api: anthropic
+      deepseek-v4-flash:
+        api: openai
 
 routes:
   gpt-5:
     provider: opencode
     model: qwen3.7-plus
-    api: openai
 
-  claude-sonnet-4:
+  gpt-5-mini:
     provider: opencode
     model: deepseek-v4-flash
-    api: anthropic
 `
 
 	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
@@ -58,6 +61,12 @@ routes:
 	if oc.APIKey != "test-key-123" {
 		t.Errorf("expected test-key-123, got %s", oc.APIKey)
 	}
+	if oc.Models == nil {
+		t.Fatal("expected models")
+	}
+	if oc.Models["qwen3.7-plus"].API != "anthropic" {
+		t.Errorf("expected anthropic, got %s", oc.Models["qwen3.7-plus"].API)
+	}
 
 	route, ok := cfg.Routes["gpt-5"]
 	if !ok {
@@ -69,8 +78,8 @@ routes:
 	if route.Model != "qwen3.7-plus" {
 		t.Errorf("expected qwen3.7-plus, got %s", route.Model)
 	}
-	if route.API != "openai" {
-		t.Errorf("expected openai, got %s", route.API)
+	if route.API != "anthropic" {
+		t.Errorf("expected anthropic (resolved), got %s", route.API)
 	}
 }
 
@@ -134,5 +143,77 @@ routes: {}
 
 	if len(cfg.Routes) != 0 {
 		t.Error("expected empty routes")
+	}
+}
+
+func TestLoadRouteAPIDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+providers:
+  opencode:
+    endpoint: https://example.com/v1
+    api_key: test
+
+routes:
+  gpt-5:
+    provider: opencode
+    model: deepseek-v4-flash
+`
+
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	route, ok := cfg.Routes["gpt-5"]
+	if !ok {
+		t.Fatal("expected gpt-5 route")
+	}
+	if route.API != "openai" {
+		t.Errorf("expected openai (default), got %s", route.API)
+	}
+}
+
+func TestLoadRouteAPIOverride(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+providers:
+  opencode:
+    endpoint: https://example.com/v1
+    api_key: test
+    models:
+      deepseek-v4-flash:
+        api: anthropic
+
+routes:
+  my-model:
+    provider: opencode
+    model: deepseek-v4-flash
+    api: openai
+`
+
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	route, ok := cfg.Routes["my-model"]
+	if !ok {
+		t.Fatal("expected route")
+	}
+	if route.API != "openai" {
+		t.Errorf("expected openai (override), got %s", route.API)
 	}
 }
