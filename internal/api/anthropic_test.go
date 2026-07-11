@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"proxy/internal/model"
-	"proxy/internal/provider"
-	"proxy/internal/resolver"
+	"github.com/taizo/polyllm-gateway/internal/model"
+	"github.com/taizo/polyllm-gateway/internal/provider"
+	"github.com/taizo/polyllm-gateway/internal/resolver"
 	"strings"
 	"testing"
 )

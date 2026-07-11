@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"proxy/internal/logger"
-	"proxy/internal/model"
-	"proxy/internal/provider"
-	"proxy/internal/resolver"
-	"proxy/internal/stream"
+	"github.com/taizo/polyllm-gateway/internal/logger"
+	"github.com/taizo/polyllm-gateway/internal/model"
+	"github.com/taizo/polyllm-gateway/internal/provider"
+	"github.com/taizo/polyllm-gateway/internal/resolver"
+	"github.com/taizo/polyllm-gateway/internal/stream"
 	"time"
 )
 
@@ -27,34 +27,64 @@ func NewAnthropicHandler(resolver *resolver.ModelResolver, providers map[string]
 	}
 }
 
+type anthropicTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
 type anthropicRequest struct {
-	Model       string          `json:"model"`
-	Messages    []anthropicMessage `json:"messages"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
-	StopSequences []string      `json:"stop_sequences,omitempty"`
-	System      string          `json:"system,omitempty"`
+	Model         string             `json:"model"`
+	Messages      []anthropicMessage `json:"messages"`
+	MaxTokens     int                `json:"max_tokens,omitempty"`
+	Stream        bool               `json:"stream,omitempty"`
+	Temperature   *float64           `json:"temperature,omitempty"`
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	System        json.RawMessage    `json:"system,omitempty"`
+	Tools         []anthropicTool    `json:"tools,omitempty"`
+	ToolChoice    json.RawMessage    `json:"tool_choice,omitempty"`
 }
 
 type anthropicMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
+func extractMessageContent(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &blocks); err == nil {
+		for _, b := range blocks {
+			if b.Type == "text" && b.Text != "" {
+				return b.Text
+			}
+		}
+	}
+	return ""
 }
 
 type anthropicContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
 }
 
 type anthropicResponse struct {
-	ID      string            `json:"id"`
-	Type    string            `json:"type"`
-	Role    string            `json:"role"`
-	Model   string            `json:"model"`
-	Content []anthropicContent `json:"content"`
-	StopReason string         `json:"stop_reason"`
-	Usage   *anthropicUsage   `json:"usage,omitempty"`
+	ID         string             `json:"id"`
+	Type       string             `json:"type"`
+	Role       string             `json:"role"`
+	Model      string             `json:"model"`
+	Content    []anthropicContent `json:"content"`
+	StopReason string             `json:"stop_reason"`
+	Usage      *anthropicUsage    `json:"usage,omitempty"`
 }
 
 type anthropicUsage struct {
@@ -76,9 +106,13 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var body anthropicRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.log.Error("anthropic decode error", "request_id", reqID, "error", err)
 		writeAnthropicError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	sysLen := len(body.System)
+	h.log.Info("anthropic debug", "request_id", reqID, "system_len", sysLen, "msg_count", len(body.Messages), "model", body.Model, "max_tokens", body.MaxTokens, "stream", body.Stream, "tools", len(body.Tools))
 
 	if body.Model == "" {
 		writeAnthropicError(w, http.StatusBadRequest, "model is required")
@@ -97,14 +131,31 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messages := make([]model.Message, len(body.Messages))
-	for i, m := range body.Messages {
-		messages[i] = model.Message{Role: m.Role, Content: m.Content}
+	messages := make([]model.Message, 0)
+	systemContent := extractMessageContent(body.System)
+	if systemContent != "" {
+		messages = append(messages, model.Message{Role: "system", Content: systemContent})
+	}
+	for _, m := range body.Messages {
+		messages = append(messages, model.Message{Role: m.Role, Content: extractMessageContent(m.Content)})
 	}
 
 	var maxTokens *int
 	if body.MaxTokens > 0 {
 		maxTokens = &body.MaxTokens
+	}
+
+	tools := make([]model.ToolDef, len(body.Tools))
+	for i, t := range body.Tools {
+		tools[i] = model.ToolDef{
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  t.InputSchema,
+		}
+	}
+	toolChoice := ""
+	if len(body.ToolChoice) > 0 {
+		toolChoice = string(body.ToolChoice)
 	}
 
 	chatReq := &model.ChatRequest{
@@ -115,6 +166,8 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MaxTokens:   maxTokens,
 		Stop:        body.StopSequences,
 		API:         route.API,
+		Tools:       tools,
+		ToolChoice:  toolChoice,
 	}
 
 	resp, err := p.Chat(ctx, chatReq)
@@ -147,15 +200,40 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var contents []anthropicContent
+	if resp.Message.Content != "" {
+		contents = append(contents, anthropicContent{Type: "text", Text: resp.Message.Content})
+	}
+	for _, tc := range resp.Message.ToolCalls {
+		input := json.RawMessage(tc.Function.Arguments)
+		if input == nil {
+			input = json.RawMessage("{}")
+		}
+		contents = append(contents, anthropicContent{
+			Type:  "tool_use",
+			ID:    tc.ID,
+			Name:  tc.Function.Name,
+			Input: input,
+		})
+	}
+	stopReason := resp.FinishReason
+	if stopReason == "tool_calls" {
+		stopReason = "tool_use"
+	}
+	if stopReason == "stop" {
+		stopReason = "end_turn"
+	}
+	if stopReason == "" {
+		stopReason = "end_turn"
+	}
+
 	respBody := anthropicResponse{
-		ID:    fmt.Sprintf("msg_%s", reqID),
-		Type:  "message",
-		Role:  "assistant",
-		Model: body.Model,
-		Content: []anthropicContent{
-			{Type: "text", Text: resp.Message.Content},
-		},
-		StopReason: resp.FinishReason,
+		ID:         fmt.Sprintf("msg_%s", reqID),
+		Type:       "message",
+		Role:       "assistant",
+		Model:      body.Model,
+		Content:    contents,
+		StopReason: stopReason,
 	}
 
 	if resp.Usage != nil {
@@ -163,10 +241,6 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
 		}
-	}
-
-	if respBody.StopReason == "" {
-		respBody.StopReason = "end_turn"
 	}
 
 	w.Header().Set("Content-Type", "application/json")

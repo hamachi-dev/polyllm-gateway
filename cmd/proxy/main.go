@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"proxy/internal/api"
-	"proxy/internal/config"
-	"proxy/internal/logger"
-	"proxy/internal/provider"
-	"proxy/internal/resolver"
+	"github.com/taizo/polyllm-gateway/internal/api"
+	"github.com/taizo/polyllm-gateway/internal/config"
+	"github.com/taizo/polyllm-gateway/internal/logger"
+	"github.com/taizo/polyllm-gateway/internal/provider"
+	"github.com/taizo/polyllm-gateway/internal/resolver"
 	"syscall"
 	"time"
 )
@@ -71,9 +71,11 @@ func main() {
 
 	openAIHandler := api.NewOpenAIHandler(res, providers, log)
 	anthropicHandler := api.NewAnthropicHandler(res, providers, log)
+	responsesHandler := api.NewResponsesHandler(res, providers, log)
 
 	muxOpenAI := http.NewServeMux()
 	muxOpenAI.Handle("/v1/chat/completions", requestIDMiddleware(openAIHandler, log))
+	muxOpenAI.Handle("/v1/responses", requestIDMiddleware(responsesHandler, log))
 
 	muxAnthropic := http.NewServeMux()
 	muxAnthropic.Handle("/v1/messages", requestIDMiddleware(anthropicHandler, log))

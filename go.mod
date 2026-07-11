@@ -1,4 +1,4 @@
-module proxy
+module github.com/taizo/polyllm-gateway
 
 go 1.24.0
 

@@ -2,3 +2,22 @@ bin/
 *.exe
 *.test
 *.out
+
+# Build artifacts
+/tmp/
+*.log
+
+# Environment & secrets
+.env
+*.env
+!*.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"proxy/internal/model"
+	"github.com/taizo/polyllm-gateway/internal/model"
 )
 
 type Provider interface {

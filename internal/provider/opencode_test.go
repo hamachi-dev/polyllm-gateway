@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"proxy/internal/model"
+	"github.com/taizo/polyllm-gateway/internal/model"
 	"strings"
 	"testing"
 )

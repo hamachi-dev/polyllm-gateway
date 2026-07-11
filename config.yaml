@@ -7,20 +7,90 @@ providers:
     endpoint: https://opencode.ai/zen/go/v1
     api_key: ${OPENCODE_API_KEY}
     models:
-      qwen3.7-plus:
-        api: anthropic
       deepseek-v4-flash:
         api: openai
+      deepseek-v4-pro:
+        api: openai
+      mimo-v2.5:
+        api: openai
+      mimo-v2.5-pro:
+        api: openai
+      qwen3.7-plus:
+        api: openai
+      qwen3.7-max:
+        api: anthropic
 
 routes:
-  gpt-5:
+  # ── Claude Code 日常 → MiMo V2.5 (高速・安価) ──
+  claude-sonnet-4-6:
+    provider: opencode
+    model: mimo-v2.5
+  claude-sonnet-4:
+    provider: opencode
+    model: mimo-v2.5
+  claude-haiku-4-5:
+    provider: opencode
+    model: mimo-v2.5
+  claude-haiku-4-5-20251001:
+    provider: opencode
+    model: mimo-v2.5
+  claude-3-5-sonnet-20241022:
+    provider: opencode
+    model: mimo-v2.5
+  claude-3-5-haiku-20241022:
+    provider: opencode
+    model: mimo-v2.5
+
+  # ── Claude Code 高品質 → Qwen3.7 Plus (Anthropic形式・高互換) ──
+  claude-opus-4-8:
+    provider: opencode
+    model: qwen3.7-plus
+  claude-opus-4:
+    provider: opencode
+    model: qwen3.7-plus
+  claude-fable-5:
     provider: opencode
     model: qwen3.7-plus
 
-  gpt-5-mini:
+  # ── Codex CLI 軽量 → DeepSeek V4 Flash ──
+  gpt-5.6-luna:
+    provider: opencode
+    model: deepseek-v4-flash
+  gpt-5.4-mini:
+    provider: opencode
+    model: deepseek-v4-flash
+  gpt-5.4-nano:
+    provider: opencode
+    model: deepseek-v4-flash
+  gpt-5.3-codex-spark:
+    provider: opencode
+    model: deepseek-v4-flash
+  gpt-5.2:
     provider: opencode
     model: deepseek-v4-flash
 
-  claude-sonnet-4:
+  # ── Codex CLI 高品質 → DeepSeek V4 Pro ──
+  gpt-5.6-sol:
     provider: opencode
-    model: deepseek-v4-flash
+    model: deepseek-v4-pro
+  gpt-5.6-terra:
+    provider: opencode
+    model: deepseek-v4-pro
+  gpt-5.5:
+    provider: opencode
+    model: deepseek-v4-pro
+  gpt-5.5-pro:
+    provider: opencode
+    model: deepseek-v4-pro
+  gpt-5.4:
+    provider: opencode
+    model: deepseek-v4-pro
+  gpt-5.4-pro:
+    provider: opencode
+    model: deepseek-v4-pro
+  gpt-5.3-codex:
+    provider: opencode
+    model: deepseek-v4-pro
+  gpt-5-codex:
+    provider: opencode
+    model: deepseek-v4-pro

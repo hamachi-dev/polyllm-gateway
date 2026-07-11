@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"proxy/internal/logger"
-	"proxy/internal/model"
-	"proxy/internal/provider"
-	"proxy/internal/resolver"
-	"proxy/internal/stream"
+	"github.com/taizo/polyllm-gateway/internal/logger"
+	"github.com/taizo/polyllm-gateway/internal/model"
+	"github.com/taizo/polyllm-gateway/internal/provider"
+	"github.com/taizo/polyllm-gateway/internal/resolver"
+	"github.com/taizo/polyllm-gateway/internal/stream"
 	"time"
 )
 

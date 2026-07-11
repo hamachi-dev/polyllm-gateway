@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"proxy/internal/model"
-	"proxy/internal/stream"
+	"github.com/taizo/polyllm-gateway/internal/model"
+	"github.com/taizo/polyllm-gateway/internal/stream"
 )
 
 type OpenCodeConfig struct {
@@ -29,8 +29,22 @@ func NewOpenCode(cfg OpenCodeConfig) *OpenCodeProvider {
 }
 
 type openAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role             string            `json:"role"`
+	Content          string            `json:"content"`
+	ReasoningContent string            `json:"reasoning_content"`
+	ToolCalls        []openAIToolCall  `json:"tool_calls,omitempty"`
+}
+
+type openAITool struct {
+	Type     string       `json:"type"`
+	Function openAIFunc   `json:"function"`
+}
+
+type openAIFunc struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Arguments   string          `json:"arguments,omitempty"`
 }
 
 type openAIChatRequest struct {
@@ -40,13 +54,21 @@ type openAIChatRequest struct {
 	Temperature *float64        `json:"temperature,omitempty"`
 	MaxTokens   *int            `json:"max_tokens,omitempty"`
 	Stop        []string        `json:"stop,omitempty"`
+	Tools       []openAITool    `json:"tools,omitempty"`
+	ToolChoice  string          `json:"tool_choice,omitempty"`
+}
+
+type openAIToolCall struct {
+	ID       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function openAIFunc   `json:"function"`
 }
 
 type openAIChoice struct {
-	Index        int            `json:"index"`
-	Message      openAIMessage  `json:"message,omitempty"`
-	Delta        *openAIMessage `json:"delta,omitempty"`
-	FinishReason *string        `json:"finish_reason,omitempty"`
+	Index        int              `json:"index"`
+	Message      openAIMessage    `json:"message,omitempty"`
+	Delta        *openAIMessage   `json:"delta,omitempty"`
+	FinishReason *string          `json:"finish_reason,omitempty"`
 }
 
 type openAIUsage struct {
@@ -78,8 +100,9 @@ type anthropicRequest struct {
 }
 
 type anthropicContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Thinking string `json:"thinking,omitempty"`
 }
 
 type anthropicResponse struct {
@@ -113,9 +136,20 @@ func (p *OpenCodeProvider) chatOpenAI(ctx context.Context, req *model.ChatReques
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 		Stop:        req.Stop,
+		ToolChoice:  req.ToolChoice,
 	}
 	for _, m := range req.Messages {
 		body.Messages = append(body.Messages, openAIMessage{Role: m.Role, Content: m.Content})
+	}
+	for _, t := range req.Tools {
+		body.Tools = append(body.Tools, openAITool{
+			Type: "function",
+			Function: openAIFunc{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
 	}
 
 	payload, _ := json.Marshal(body)
@@ -215,7 +249,22 @@ func (p *OpenCodeProvider) parseOpenAIResponse(resp *http.Response) (*model.Chat
 
 	cr := &model.ChatResponse{Model: oaiResp.Model}
 	if len(oaiResp.Choices) > 0 {
-		cr.Message = model.Message{Role: oaiResp.Choices[0].Message.Role, Content: oaiResp.Choices[0].Message.Content}
+		msg := oaiResp.Choices[0].Message
+		content := msg.Content
+		if content == "" {
+			content = msg.ReasoningContent
+		}
+		cr.Message = model.Message{Role: msg.Role, Content: content}
+		for _, tc := range msg.ToolCalls {
+			cr.Message.ToolCalls = append(cr.Message.ToolCalls, model.ToolCall{
+				ID:   tc.ID,
+				Type: tc.Type,
+				Function: model.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
 		if oaiResp.Choices[0].FinishReason != nil {
 			cr.FinishReason = *oaiResp.Choices[0].FinishReason
 		}
