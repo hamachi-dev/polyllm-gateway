@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"proxy/internal/model"
@@ -159,6 +160,138 @@ func TestOpenCodeUpstreamError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for unauthorized")
+	}
+}
+
+func TestOpenCodeAnthropicNonStreaming(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "test-key" {
+			t.Error("missing x-api-key header")
+		}
+		if r.Header.Get("anthropic-version") != "2023-06-01" {
+			t.Error("missing anthropic-version header")
+		}
+		if r.URL.Path != "/messages" {
+			t.Errorf("expected /messages, got %s", r.URL.Path)
+		}
+
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["model"] != "qwen3.7-plus" {
+			t.Errorf("expected qwen3.7-plus, got %v", body["model"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":      "msg_test",
+			"type":    "message",
+			"role":    "assistant",
+			"model":   "qwen3.7-plus",
+			"content": []map[string]string{{"type": "text", "text": "Hello from Anthropic!"}},
+			"stop_reason": "end_turn",
+			"usage": map[string]int{
+				"input_tokens":  5,
+				"output_tokens": 15,
+			},
+		})
+	}))
+	defer server.Close()
+
+	p := NewOpenCode(OpenCodeConfig{
+		Endpoint: server.URL,
+		APIKey:   "test-key",
+	})
+
+	resp, err := p.Chat(context.Background(), &model.ChatRequest{
+		Model: "qwen3.7-plus",
+		Messages: []model.Message{
+			{Role: "user", Content: "hi"},
+		},
+		API: "anthropic",
+	})
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+
+	if resp.Message.Content != "Hello from Anthropic!" {
+		t.Errorf("expected Hello from Anthropic!, got %s", resp.Message.Content)
+	}
+	if resp.FinishReason != "end_turn" {
+		t.Errorf("expected end_turn, got %s", resp.FinishReason)
+	}
+	if resp.Usage.TotalTokens != 20 {
+		t.Errorf("expected 20, got %d", resp.Usage.TotalTokens)
+	}
+}
+
+func TestOpenCodeAnthropicStreaming(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "test-key" {
+			t.Error("missing x-api-key header")
+		}
+		if r.Header.Get("anthropic-version") != "2023-06-01" {
+			t.Error("missing anthropic-version header")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+
+		chunks := []string{
+			`data: {"type":"message_start","message":{"id":"msg_1"}}`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}`,
+			`data: {"type":"content_block_stop","index":0}`,
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}`,
+			`data: {"type":"message_stop"}`,
+		}
+
+		for _, c := range chunks {
+			fmt.Fprintf(w, "%s\n\n", c)
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	p := NewOpenCode(OpenCodeConfig{
+		Endpoint: server.URL,
+		APIKey:   "test-key",
+	})
+
+	resp, err := p.Chat(context.Background(), &model.ChatRequest{
+		Model: "qwen3.7-plus",
+		Messages: []model.Message{{Role: "user", Content: "hi"}},
+		Stream: true,
+		API:    "anthropic",
+	})
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+
+	if resp.StreamBody == nil {
+		t.Fatal("expected StreamBody for streaming response")
+	}
+	defer resp.StreamBody.Close()
+
+	var sb strings.Builder
+	buf := make([]byte, 4096)
+	for {
+		n, err := resp.StreamBody.Read(buf)
+		if n > 0 {
+			sb.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	output := sb.String()
+	if !strings.Contains(output, "Hello") {
+		t.Errorf("expected Hello in stream output, got: %s", output)
+	}
+	if !strings.Contains(output, "[DONE]") {
+		t.Errorf("expected [DONE] in stream output, got: %s", output)
 	}
 }
 

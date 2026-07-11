@@ -77,6 +77,7 @@ func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Temperature: body.Temperature,
 		MaxTokens:   body.MaxTokens,
 		Stop:        body.Stop,
+		API:         route.API,
 	}
 
 	resp, err := p.Chat(ctx, chatReq)

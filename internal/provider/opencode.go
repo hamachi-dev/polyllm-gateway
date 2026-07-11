@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"proxy/internal/model"
+	"proxy/internal/stream"
 )
 
 type OpenCodeConfig struct {
@@ -55,14 +56,57 @@ type openAIUsage struct {
 }
 
 type openAIChatResponse struct {
-	ID      string        `json:"id"`
-	Object  string        `json:"object"`
-	Model   string        `json:"model"`
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Model   string         `json:"model"`
 	Choices []openAIChoice `json:"choices"`
-	Usage   *openAIUsage  `json:"usage,omitempty"`
+	Usage   *openAIUsage   `json:"usage,omitempty"`
 }
 
-func buildOpenAIRequest(req *model.ChatRequest, endpoint, apiKey string) (*http.Request, error) {
+type anthropicMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type anthropicRequest struct {
+	Model       string             `json:"model"`
+	Messages    []anthropicMessage `json:"messages"`
+	MaxTokens   int                `json:"max_tokens,omitempty"`
+	Stream      bool               `json:"stream,omitempty"`
+	Temperature *float64           `json:"temperature,omitempty"`
+	StopSequences []string         `json:"stop_sequences,omitempty"`
+}
+
+type anthropicContent struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type anthropicResponse struct {
+	ID         string             `json:"id"`
+	Type       string             `json:"type"`
+	Role       string             `json:"role"`
+	Model      string             `json:"model"`
+	Content    []anthropicContent `json:"content"`
+	StopReason string             `json:"stop_reason"`
+	Usage      *anthropicUsage    `json:"usage,omitempty"`
+}
+
+type anthropicUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+func (p *OpenCodeProvider) Chat(ctx context.Context, req *model.ChatRequest) (*model.ChatResponse, error) {
+	switch req.API {
+	case "anthropic":
+		return p.chatAnthropic(ctx, req)
+	default:
+		return p.chatOpenAI(ctx, req)
+	}
+}
+
+func (p *OpenCodeProvider) chatOpenAI(ctx context.Context, req *model.ChatRequest) (*model.ChatResponse, error) {
 	body := openAIChatRequest{
 		Model:       req.Model,
 		Stream:      req.Stream,
@@ -71,33 +115,50 @@ func buildOpenAIRequest(req *model.ChatRequest, endpoint, apiKey string) (*http.
 		Stop:        req.Stop,
 	}
 	for _, m := range req.Messages {
-		body.Messages = append(body.Messages, openAIMessage{
-			Role:    m.Role,
-			Content: m.Content,
-		})
+		body.Messages = append(body.Messages, openAIMessage{Role: m.Role, Content: m.Content})
 	}
 
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequest(http.MethodPost, endpoint+"/chat/completions", bytes.NewReader(payload))
+	payload, _ := json.Marshal(body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.Endpoint+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+p.config.APIKey)
 
-	return httpReq, nil
+	return p.doRoundTrip(ctx, req, httpReq)
 }
 
-func (p *OpenCodeProvider) Chat(ctx context.Context, req *model.ChatRequest) (*model.ChatResponse, error) {
-	httpReq, err := buildOpenAIRequest(req, p.config.Endpoint, p.config.APIKey)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+func (p *OpenCodeProvider) chatAnthropic(ctx context.Context, req *model.ChatRequest) (*model.ChatResponse, error) {
+	maxTokens := 1024
+	if req.MaxTokens != nil && *req.MaxTokens > 0 {
+		maxTokens = *req.MaxTokens
 	}
+
+	body := anthropicRequest{
+		Model:         req.Model,
+		Stream:        req.Stream,
+		MaxTokens:     maxTokens,
+		Temperature:   req.Temperature,
+		StopSequences: req.Stop,
+	}
+	for _, m := range req.Messages {
+		body.Messages = append(body.Messages, anthropicMessage{Role: m.Role, Content: m.Content})
+	}
+
+	payload, _ := json.Marshal(body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.Endpoint+"/messages", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", p.config.APIKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+	return p.doRoundTrip(ctx, req, httpReq)
+}
+
+func (p *OpenCodeProvider) doRoundTrip(ctx context.Context, req *model.ChatRequest, httpReq *http.Request) (*model.ChatResponse, error) {
 	httpReq = httpReq.WithContext(ctx)
 
 	resp, err := p.client.Do(httpReq)
@@ -112,26 +173,49 @@ func (p *OpenCodeProvider) Chat(ctx context.Context, req *model.ChatRequest) (*m
 	}
 
 	if req.Stream {
-		return &model.ChatResponse{
-			Model:      req.Model,
-			StreamBody: resp.Body,
-		}, nil
+		return p.handleStreaming(req, resp)
 	}
 	defer resp.Body.Close()
 
+	return p.parseResponse(req, resp)
+}
+
+func (p *OpenCodeProvider) handleStreaming(req *model.ChatRequest, resp *http.Response) (*model.ChatResponse, error) {
+	if req.API == "anthropic" {
+		raw, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read upstream body: %w", err)
+		}
+		var buf bytes.Buffer
+		conv := stream.NewAnthropicToOpenAI()
+		if err := conv.Convert(context.Background(), bytes.NewReader(raw), &buf); err != nil {
+			return nil, fmt.Errorf("convert stream: %w", err)
+		}
+		return &model.ChatResponse{
+			Model:      req.Model,
+			StreamBody: io.NopCloser(bytes.NewReader(buf.Bytes())),
+		}, nil
+	}
+	return &model.ChatResponse{Model: req.Model, StreamBody: resp.Body}, nil
+}
+
+func (p *OpenCodeProvider) parseResponse(req *model.ChatRequest, resp *http.Response) (*model.ChatResponse, error) {
+	if req.API == "anthropic" {
+		return p.parseAnthropicResponse(resp)
+	}
+	return p.parseOpenAIResponse(resp)
+}
+
+func (p *OpenCodeProvider) parseOpenAIResponse(resp *http.Response) (*model.ChatResponse, error) {
 	var oaiResp openAIChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&oaiResp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	cr := &model.ChatResponse{
-		Model: oaiResp.Model,
-	}
+	cr := &model.ChatResponse{Model: oaiResp.Model}
 	if len(oaiResp.Choices) > 0 {
-		cr.Message = model.Message{
-			Role:    oaiResp.Choices[0].Message.Role,
-			Content: oaiResp.Choices[0].Message.Content,
-		}
+		cr.Message = model.Message{Role: oaiResp.Choices[0].Message.Role, Content: oaiResp.Choices[0].Message.Content}
 		if oaiResp.Choices[0].FinishReason != nil {
 			cr.FinishReason = *oaiResp.Choices[0].FinishReason
 		}
@@ -143,6 +227,26 @@ func (p *OpenCodeProvider) Chat(ctx context.Context, req *model.ChatRequest) (*m
 			TotalTokens:      oaiResp.Usage.TotalTokens,
 		}
 	}
+	return cr, nil
+}
 
+func (p *OpenCodeProvider) parseAnthropicResponse(resp *http.Response) (*model.ChatResponse, error) {
+	var anthResp anthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&anthResp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	cr := &model.ChatResponse{Model: anthResp.Model}
+	if len(anthResp.Content) > 0 {
+		cr.Message = model.Message{Role: "assistant", Content: anthResp.Content[0].Text}
+	}
+	cr.FinishReason = anthResp.StopReason
+	if anthResp.Usage != nil {
+		cr.Usage = &model.Usage{
+			PromptTokens:     anthResp.Usage.InputTokens,
+			CompletionTokens: anthResp.Usage.OutputTokens,
+			TotalTokens:      anthResp.Usage.InputTokens + anthResp.Usage.OutputTokens,
+		}
+	}
 	return cr, nil
 }

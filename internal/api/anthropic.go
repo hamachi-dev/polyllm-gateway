@@ -114,6 +114,7 @@ func (h *AnthropicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Temperature: body.Temperature,
 		MaxTokens:   maxTokens,
 		Stop:        body.StopSequences,
+		API:         route.API,
 	}
 
 	resp, err := p.Chat(ctx, chatReq)

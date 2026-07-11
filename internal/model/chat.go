@@ -20,6 +20,7 @@ type ChatRequest struct {
 	Temperature *float64
 	MaxTokens   *int
 	Stop        []string
+	API         string // "openai" or "anthropic"
 }
 
 type ChatResponse struct {

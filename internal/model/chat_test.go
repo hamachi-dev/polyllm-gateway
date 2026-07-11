@@ -33,6 +33,7 @@ func TestChatRequest(t *testing.T) {
 		Temperature: &temp,
 		MaxTokens:   &token,
 		Stop:        []string{".", "!"},
+		API:         "openai",
 	}
 
 	if req.Model != "test-model" {
@@ -43,6 +44,19 @@ func TestChatRequest(t *testing.T) {
 	}
 	if *req.Temperature != 0.5 {
 		t.Errorf("expected 0.5, got %f", *req.Temperature)
+	}
+	if req.API != "openai" {
+		t.Errorf("expected openai, got %s", req.API)
+	}
+}
+
+func TestChatRequestAnthropicAPI(t *testing.T) {
+	req := ChatRequest{
+		Model: "claude-model",
+		API:   "anthropic",
+	}
+	if req.API != "anthropic" {
+		t.Errorf("expected anthropic, got %s", req.API)
 	}
 }
 
