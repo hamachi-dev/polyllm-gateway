@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"github.com/taizo/polyllm-gateway/internal/model"
-	"github.com/taizo/polyllm-gateway/internal/stream"
+	"github.com/hamachi-dev/polyllm-gateway/internal/model"
+	"github.com/hamachi-dev/polyllm-gateway/internal/stream"
 )
 
 type OpenCodeConfig struct {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"github.com/taizo/polyllm-gateway/internal/model"
+	"github.com/hamachi-dev/polyllm-gateway/internal/model"
 	"strings"
 	"testing"
 )

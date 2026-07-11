@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"github.com/taizo/polyllm-gateway/internal/model"
+	"github.com/hamachi-dev/polyllm-gateway/internal/model"
 )
 
 type Provider interface {

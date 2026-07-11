@@ -1,4 +1,4 @@
-module github.com/taizo/polyllm-gateway
+module github.com/hamachi-dev/polyllm-gateway
 
 go 1.24.0
 
