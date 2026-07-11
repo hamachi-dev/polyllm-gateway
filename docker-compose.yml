@@ -1,0 +1,10 @@
+services:
+  proxy:
+    build: .
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    environment:
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+    volumes:
+      - ./config.yaml:/config.yaml
