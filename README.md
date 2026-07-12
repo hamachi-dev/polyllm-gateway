@@ -93,7 +93,7 @@ providers:
         api: openai
 
 routes:
-  # Claude Code daily → MiMo V2.5 ($0.14/$0.28, fast)
+  # Claude Code daily → MiMo V2.5 (fast)
   claude-sonnet-4-6:
     provider: opencode
     model: mimo-v2.5
@@ -101,7 +101,7 @@ routes:
     provider: opencode
     model: mimo-v2.5
 
-  # Claude Code high-quality → Qwen3.7 Plus ($0.40/$1.60)
+  # Claude Code high-quality → Qwen3.7 Plus
   claude-opus-4-8:
     provider: opencode
     model: qwen3.7-plus
@@ -109,7 +109,7 @@ routes:
     provider: opencode
     model: qwen3.7-plus
 
-  # Codex CLI lightweight → DeepSeek V4 Flash ($0.14/$0.28)
+  # Codex CLI lightweight → DeepSeek V4 Flash
   gpt-5.4-mini:
     provider: opencode
     model: deepseek-v4-flash
@@ -117,7 +117,7 @@ routes:
     provider: opencode
     model: deepseek-v4-flash
 
-  # Codex CLI high-quality → DeepSeek V4 Pro ($1.74/$3.48)
+  # Codex CLI high-quality → DeepSeek V4 Pro
   gpt-5.5:
     provider: opencode
     model: deepseek-v4-pro

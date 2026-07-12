@@ -402,10 +402,10 @@ routes:
 
 | クライアント | 上流モデル | API形式 | 価格 (in/out) | 選定理��� |
 |-------------|-----------|---------|---------------|---------|
-| Claude Code (sonnet) | MiMo V2.5 | openai | $0.14/$0.28 | 高速・安価・非推論 |
-| Claude Code (opus) | Qwen3.7 Plus | openai | $0.40/$1.60 | 高品質・tool互換 |
-| Codex CLI (mini) | DeepSeek V4 Flash | openai | $0.14/$0.28 | 推論付きコーディング |
-| Codex CLI (pro) | DeepSeek V4 Pro | openai | $1.74/$3.48 | 重量推論タスク |
+| Claude Code (sonnet) | MiMo V2.5 | openai | 高速・安価・非推論 |
+| Claude Code (opus) | Qwen3.7 Plus | openai | 高品質・tool互換 |
+| Codex CLI (mini) | DeepSeek V4 Flash | openai | 推論付きコーディング |
+| Codex CLI (pro) | DeepSeek V4 Pro | openai | 重量推論タスク |
 
 - Claude Code は自身が推論・計画を管理するため、上流に推論モデルは不要（二重推論で遅延悪化）
 - Codex CLI はコーディング特化のため、推論モデルの恩恵を受けやすい
