@@ -210,12 +210,12 @@ curl http://localhost:8000/v1/responses \
 
 ## Model Routing
 
-| Client Model | Upstream | Price (in/out) | Best For |
-|-------------|----------|---------------|----------|
-| `claude-sonnet-4-6` | MiMo V2.5 | $0.14/$0.28 | Claude Code daily |
-| `claude-opus-4-8` | Qwen3.7 Plus | $0.40/$1.60 | Claude Code quality |
-| `gpt-5.4-mini` | DeepSeek V4 Flash | $0.14/$0.28 | Codex daily |
-| `gpt-5.5` | DeepSeek V4 Pro | $1.74/$3.48 | Codex complex |
+| Client Model | Upstream | Best For |
+|-------------|----------|----------|
+| `claude-sonnet-4-6` | MiMo V2.5 | Claude Code daily |
+| `claude-opus-4-8` | Qwen3.7 Plus | Claude Code quality |
+| `gpt-5.4-mini` | DeepSeek V4 Flash | Codex daily |
+| `gpt-5.5` | DeepSeek V4 Pro | Codex complex |
 
 ## Format Conversion
 
