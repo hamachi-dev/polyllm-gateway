@@ -28,7 +28,7 @@ Client (OpenAI API)    Client (Anthropic API)    Client (Responses API)
 
 ```bash
 cd ~/LLM/proxy
-~/.local/go/bin/go build -o /tmp/proxy ./cmd/proxy/
+~/.local/go/bin/go build -o bin/proxy ./cmd/proxy/
 ```
 
 ### 2. Auto-start with systemd (recommended)
@@ -42,7 +42,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/tmp/proxy /home/taizo/LLM/proxy/config.yaml
+ExecStart=%h/LLM/proxy/bin/proxy %h/LLM/proxy/config.yaml
 Restart=always
 RestartSec=3
 Environment=OPENCODE_API_KEY=your-key-here
@@ -68,7 +68,7 @@ journalctl --user -u llm-proxy -f    # tail logs
 
 ```bash
 export OPENCODE_API_KEY="your-key"
-/tmp/proxy ~/LLM/proxy/config.yaml
+~/LLM/proxy/bin/proxy ~/LLM/proxy/config.yaml
 ```
 
 ## Configuration
